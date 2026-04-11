@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:geocoding/geocoding.dart';
 import '../models/air_quality_model.dart';
 import 'air_quality_datasource.dart';
 
@@ -33,7 +34,7 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
     required double latitude,
     required double longitude,
   }) async {
-    final sidoName = _latLonToSidoName(latitude, longitude);
+    final sidoName = await _resolveSidoName(latitude, longitude);
     return await _fetchFromAjax(sidoName) ??
         AirQualityModel.mock(stationName: '$sidoName 측정소');
   }
@@ -91,60 +92,62 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
     }
   }
 
-  /// 위·경도 좌표를 에어코리아 광역시도명으로 변환 (근사 경계값 사용).
-  /// geocoding 패키지 없이 오프라인 동작 가능하도록 하드코딩.
-  String _latLonToSidoName(double lat, double lon) {
-    if (lat >= 37.42 && lat <= 37.70 && lon >= 126.73 && lon <= 127.18) {
-      return '서울';
+  /// geocoding 패키지로 역지오코딩 후 에어코리아 시도명 포맷으로 정규화.
+  ///
+  /// geocoding이 반환하는 [Placemark.administrativeArea]는
+  /// "서울특별시", "경기도", "제주특별자치도" 등 공식 행정구역명이므로
+  /// 에어코리아 API가 기대하는 짧은 형태("서울", "경기", "제주")로 변환.
+  ///
+  /// 역지오코딩 자체가 실패하면 예외를 던지지 않고 '서울'을 반환.
+  Future<String> _resolveSidoName(double lat, double lon) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(lat, lon);
+      if (placemarks.isNotEmpty) {
+        final area = placemarks.first.administrativeArea ?? '';
+        return _normalizeAdminArea(area);
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[코코숨] 역지오코딩 실패: $e → 서울 fallback');
     }
-    if (lat >= 37.15 && lat <= 37.74 && lon >= 126.43 && lon <= 127.32) {
-      return '경기';
+    return '서울';
+  }
+
+  /// "경기도" → "경기", "서울특별시" → "서울" 등으로 변환.
+  /// 에어코리아 API sidoName 파라미터가 도/특별시/광역시 접미사 없는 형태를 요구.
+  static String _normalizeAdminArea(String raw) {
+    // 정확히 매핑되는 케이스 먼저 처리
+    const exact = {
+      '서울특별시': '서울',
+      '부산광역시': '부산',
+      '대구광역시': '대구',
+      '인천광역시': '인천',
+      '광주광역시': '광주',
+      '대전광역시': '대전',
+      '울산광역시': '울산',
+      '세종특별자치시': '세종',
+      '경기도': '경기',
+      '강원특별자치도': '강원',
+      '강원도': '강원',
+      '충청북도': '충북',
+      '충청남도': '충남',
+      '전라북도': '전북',
+      '전북특별자치도': '전북',
+      '전라남도': '전남',
+      '경상북도': '경북',
+      '경상남도': '경남',
+      '제주특별자치도': '제주',
+    };
+
+    if (exact.containsKey(raw)) return exact[raw]!;
+
+    // 접미사 제거 fallback: "○○도" → "○○", "○○시" → "○○"
+    for (final suffix in ['특별자치도', '특별자치시', '광역시', '특별시', '도', '시']) {
+      if (raw.endsWith(suffix)) {
+        return raw.substring(0, raw.length - suffix.length);
+      }
     }
-    if (lat >= 37.26 && lat <= 37.59 && lon >= 126.31 && lon <= 126.85) {
-      return '인천';
-    }
-    if (lat >= 34.87 && lat <= 35.40 && lon >= 128.73 && lon <= 129.32) {
-      return '부산';
-    }
-    if (lat >= 35.65 && lat <= 36.03 && lon >= 128.40 && lon <= 128.78) {
-      return '대구';
-    }
-    if (lat >= 35.07 && lat <= 35.28 && lon >= 126.70 && lon <= 127.00) {
-      return '광주';
-    }
-    if (lat >= 36.20 && lat <= 36.47 && lon >= 127.22 && lon <= 127.55) {
-      return '대전';
-    }
-    if (lat >= 35.44 && lat <= 35.60 && lon >= 129.17 && lon <= 129.46) {
-      return '울산';
-    }
-    if (lat >= 36.44 && lat <= 36.59 && lon >= 127.21 && lon <= 127.36) {
-      return '세종';
-    }
-    if (lat >= 33.10 && lat <= 33.61 && lon >= 126.14 && lon <= 126.97) {
-      return '제주';
-    }
-    if (lat >= 37.50 && lat <= 38.62 && lon >= 127.05 && lon <= 129.39) {
-      return '강원';
-    }
-    if (lat >= 36.49 && lat <= 37.18 && lon >= 127.06 && lon <= 129.02) {
-      return '충북';
-    }
-    if (lat >= 35.90 && lat <= 36.98 && lon >= 125.90 && lon <= 127.66) {
-      return '충남';
-    }
-    if (lat >= 35.98 && lat <= 37.18 && lon >= 127.59 && lon <= 129.59) {
-      return '경북';
-    }
-    if (lat >= 34.58 && lat <= 35.68 && lon >= 127.60 && lon <= 129.22) {
-      return '경남';
-    }
-    if (lat >= 35.41 && lat <= 36.00 && lon >= 126.36 && lon <= 127.89) {
-      return '전북';
-    }
-    if (lat >= 33.90 && lat <= 35.06 && lon >= 125.89 && lon <= 127.72) {
-      return '전남';
-    }
-    return '서울'; // fallback
+
+    return raw.isEmpty ? '서울' : raw;
   }
 }
