@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  iOS 배포 옵션 설정 파일.
+
+  App Store Connect 배포 전 아래 항목을 업데이트하세요:
+  - teamID: Apple Developer Team ID (개발자 계정 → Membership에서 확인)
+  - provisioningProfiles: 앱 Bundle ID와 프로비저닝 프로파일 이름
+
+  method 옵션:
+    app-store          — App Store / TestFlight 배포
+    ad-hoc             — 특정 기기 배포
+    development        — 개발용
+    enterprise         — 기업 배포
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+
+    <key>teamID</key>
+    <string>REPLACE_WITH_YOUR_TEAM_ID</string>
+
+    <key>uploadBitcode</key>
+    <false/>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>compileBitcode</key>
+    <false/>
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <!-- key: Bundle ID, value: Provisioning Profile 이름 -->
+        <key>com.cocosum.cocoSum</key>
+        <string>cocosum_appstore_profile</string>
+    </dict>
+
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <key>stripSwiftSymbols</key>
+    <true/>
+
+    <key>thinning</key>
+    <string>&lt;none&gt;</string>
+</dict>
+</plist>
