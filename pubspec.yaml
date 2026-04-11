@@ -1,0 +1,46 @@
+name: coco_sum
+description: "코코숨 - 우리 아가 맑은 숨결 지킴이"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 네트워크 & 크롤링
+  dio: ^5.8.0+1
+  html: ^0.15.6
+
+  # 상태 관리
+  flutter_riverpod: ^2.6.1
+
+  # 위치
+  geolocator: ^14.0.1
+  geocoding: ^3.0.0
+
+  # 알림
+  flutter_local_notifications: ^18.0.1
+
+  # 차트 (Phase 2)
+  fl_chart: ^0.71.0
+
+  # 로컬 저장소
+  shared_preferences: ^2.5.3
+
+  # 날짜/시간 포맷
+  intl: ^0.20.2
+
+  # 폰트
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
