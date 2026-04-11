@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
-import 'package:geocoding/geocoding.dart';
 
 import '../models/air_quality_model.dart';
 import 'air_quality_datasource.dart';
@@ -60,14 +59,45 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
 
   // ── 위치 정보 취득 ────────────────────────────────────────────
 
+  /// Nominatim(OpenStreetMap) 역지오코딩 — 웹/모바일 모두 동작.
+  /// geocoding 패키지의 placemarkFromCoordinates는 Flutter Web에서
+  /// UnimplementedError를 던지므로 직접 HTTP 호출로 대체.
   Future<_LocationInfo> _resolveLocation(double lat, double lon) async {
     try {
-      final placemarks = await placemarkFromCoordinates(lat, lon);
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        final sido = _normalizeAdminArea(p.administrativeArea ?? '');
-        // subAdministrativeArea: "강남구", "수원시", "고양시 일산서구" 등
-        final district = p.subAdministrativeArea;
+      final response = await _dio.get(
+        'https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {
+          'format': 'jsonv2',
+          'lat': lat.toString(),
+          'lon': lon.toString(),
+          'accept-language': 'ko',
+          'zoom': '10',
+        },
+        options: Options(
+          headers: {
+            'User-Agent': 'CoCo-Sum/1.0 (air-quality-app)',
+            'Accept': 'application/json',
+          },
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+
+      final address = response.data['address'] as Map<String, dynamic>?;
+      if (address != null) {
+        // state: "경기도", "서울특별시", "인천광역시" 등
+        final rawState = address['state']?.toString() ?? '';
+        final sido = _normalizeAdminArea(rawState);
+
+        // 구/군 힌트: city_district(강남구), suburb(행당동), county(광주시)
+        final district = (address['city_district'] ??
+                address['suburb'] ??
+                address['county'] ??
+                address['city'])
+            ?.toString();
+
+        // ignore: avoid_print
+        print('[코코숨] 역지오코딩(Nominatim): sido=$sido, district=$district');
         return _LocationInfo(sidoName: sido, districtName: district);
       }
     } catch (e) {

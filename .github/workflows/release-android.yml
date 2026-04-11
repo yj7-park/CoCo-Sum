@@ -29,6 +29,26 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Bump patch version
+        run: |
+          # pubspec.yaml의 version: X.Y.Z+N 에서 Z를 1 증가
+          CURRENT=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          SEMVER=$(echo "$CURRENT" | cut -d'+' -f1)
+          BUILD=$(echo "$CURRENT" | cut -d'+' -f2)
+          MAJOR=$(echo "$SEMVER" | cut -d'.' -f1)
+          MINOR=$(echo "$SEMVER" | cut -d'.' -f2)
+          PATCH=$(echo "$SEMVER" | cut -d'.' -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_BUILD=$((BUILD + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}+${NEW_BUILD}"
+          sed -i "s/^version: .*/version: ${NEW_VERSION}/" pubspec.yaml
+          echo "Bumped: $CURRENT → $NEW_VERSION"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pubspec.yaml
+          git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
+          git push
+
       - name: Flutter pub get
         run: flutter pub get
 
