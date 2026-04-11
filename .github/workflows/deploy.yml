@@ -1,0 +1,98 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  # ── Web → GitHub Pages ───────────────────────────────────
+  deploy-web:
+    name: Deploy Web to GitHub Pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Web
+        run: flutter build web --release --base-href /CoCo-Sum/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          force_orphan: true
+
+  # ── Android APK → GitHub Release ─────────────────────────
+  release-apk:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build APK (release)
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk artifacts/cocosum-release.apk
+
+      - name: Get version from pubspec
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create/Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "코코숨 ${{ steps.version.outputs.version }}"
+          body: |
+            ## 코코숨 (CoCo-Sum) ${{ steps.version.outputs.version }}
+
+            우리 아가 맑은 숨결 지킴이 🌤️
+
+            ### 설치 방법
+            1. `cocosum-release.apk` 다운로드
+            2. Android 설정 → 보안 → 알 수 없는 앱 허용
+            3. APK 파일 설치
+
+            ### 변경사항
+            - Phase 1 MVP: 위치 기반 미세먼지 조회
+            - 코코 마스코트 (공기질 반응형 표정/애니메이션)
+            - PM2.5 / PM10 표시
+          files: artifacts/cocosum-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
