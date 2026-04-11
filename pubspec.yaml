@@ -41,6 +41,26 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/app_icon.png"
+  adaptive_icon_background: "#87CEEB"   # 하늘색 배경 (Android 12+ adaptive icon)
+  adaptive_icon_foreground: "assets/icons/app_icon.png"
+  remove_alpha_ios: true                # App Store 정책: iOS 아이콘 alpha 채널 제거
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    background_color: "#87CEEB"
+    theme_color: "#4FC3F7"
+  windows:
+    generate: false
+  macos:
+    generate: false
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icons/

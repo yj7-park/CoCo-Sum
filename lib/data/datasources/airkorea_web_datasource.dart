@@ -1,26 +1,31 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:geocoding/geocoding.dart';
+
 import '../models/air_quality_model.dart';
 import 'air_quality_datasource.dart';
 
 /// 에어코리아 웹사이트 내부 AJAX 엔드포인트를 통해 데이터를 가져오는 구현체.
 ///
-/// 비공식 엔드포인트를 사용하므로 응답 형식이 변경될 수 있습니다.
-/// 실패 시 자동으로 mock 데이터로 fallback합니다.
+/// ## 측정소 선택 전략 (우선순위 순)
+/// 1. 좌표 우선 — 응답에 dmX/dmY(경위도)가 있으면 하버사인 공식으로 최근접 측정소 선택
+/// 2. 행정구역 매칭 — 역지오코딩으로 얻은 구/군명과 stationName 문자열 매칭
+/// 3. Fallback — 시도 내 첫 번째 측정소
 ///
 /// ## 공식 API 교체 시
-/// 이 파일을 복사해서 `airkorea_api_datasource.dart`로 이름을 바꾼 후
-/// `_fetchFromAjax`를 아래 공식 API 호출로 교체하세요:
+/// 이 파일을 복사해 `airkorea_api_datasource.dart`로 이름 변경 후
+/// `_fetchAllStations`의 URL을 아래로 교체하세요:
 ///
 /// ```
 /// GET https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty
 ///   ?serviceKey={API_KEY}
 ///   &sidoName={시도명}
 ///   &searchCondition=HOUR
-///   &numOfRows=100
-///   &pageNo=1
-///   &returnType=json
+///   &numOfRows=100&pageNo=1&returnType=json
 /// ```
+/// 공식 API는 응답에 dmX/dmY가 없으므로 별도로
+/// `getMsrstnList` 호출 후 TM좌표 → WGS84 변환이 필요합니다.
 class AirKoreaWebDataSource implements AirQualityDataSource {
   final Dio _dio;
 
@@ -29,94 +34,51 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
 
   AirKoreaWebDataSource(this._dio);
 
+  // ── 공개 인터페이스 ──────────────────────────────────────────
+
   @override
   Future<AirQualityModel> getAirQuality({
     required double latitude,
     required double longitude,
   }) async {
-    final sidoName = await _resolveSidoName(latitude, longitude);
-    return await _fetchFromAjax(sidoName) ??
-        AirQualityModel.mock(stationName: '$sidoName 측정소');
-  }
+    final location = await _resolveLocation(latitude, longitude);
+    final stations = await _fetchAllStations(location.sidoName);
 
-  Future<AirQualityModel?> _fetchFromAjax(String sidoName) async {
-    try {
-      final response = await _dio.get(
-        '$_baseUrl$_endpoint',
-        queryParameters: {
-          'sidoName': sidoName,
-          'searchCondition': 'HOUR',
-          'numOfRows': '30',
-          'pageNo': '1',
-        },
-        options: Options(
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
-                    'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/21A329',
-            'Referer': _baseUrl,
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          receiveTimeout: const Duration(seconds: 10),
-          sendTimeout: const Duration(seconds: 10),
-        ),
-      );
-
-      final data = response.data;
-      List<dynamic>? list;
-
-      if (data is Map) {
-        list = (data['list'] ?? data['data'] ?? data['items']) as List<dynamic>?;
-      } else if (data is List) {
-        list = data;
-      }
-
-      if (list != null && list.isNotEmpty) {
-        final first = list.first;
-        if (first is Map) {
-          return AirQualityModel.fromAirKoreaJson(
-            Map<String, dynamic>.from(first),
-          );
-        }
-      }
-      return null;
-    } on DioException catch (e) {
-      // ignore: avoid_print
-      print('[코코숨] 에어코리아 요청 실패 (${e.type.name}): ${e.message}');
-      return null;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[코코숨] 데이터 파싱 실패: $e');
-      return null;
+    if (stations == null || stations.isEmpty) {
+      return AirQualityModel.mock(stationName: '${location.sidoName} 측정소');
     }
+
+    final nearest = _findNearest(
+      stations: stations,
+      userLat: latitude,
+      userLon: longitude,
+      districtHint: location.districtName,
+    );
+
+    return AirQualityModel.fromAirKoreaJson(nearest);
   }
 
-  /// geocoding 패키지로 역지오코딩 후 에어코리아 시도명 포맷으로 정규화.
-  ///
-  /// geocoding이 반환하는 [Placemark.administrativeArea]는
-  /// "서울특별시", "경기도", "제주특별자치도" 등 공식 행정구역명이므로
-  /// 에어코리아 API가 기대하는 짧은 형태("서울", "경기", "제주")로 변환.
-  ///
-  /// 역지오코딩 자체가 실패하면 예외를 던지지 않고 '서울'을 반환.
-  Future<String> _resolveSidoName(double lat, double lon) async {
+  // ── 위치 정보 취득 ────────────────────────────────────────────
+
+  Future<_LocationInfo> _resolveLocation(double lat, double lon) async {
     try {
       final placemarks = await placemarkFromCoordinates(lat, lon);
       if (placemarks.isNotEmpty) {
-        final area = placemarks.first.administrativeArea ?? '';
-        return _normalizeAdminArea(area);
+        final p = placemarks.first;
+        final sido = _normalizeAdminArea(p.administrativeArea ?? '');
+        // subAdministrativeArea: "강남구", "수원시", "고양시 일산서구" 등
+        final district = p.subAdministrativeArea;
+        return _LocationInfo(sidoName: sido, districtName: district);
       }
     } catch (e) {
       // ignore: avoid_print
-      print('[코코숨] 역지오코딩 실패: $e → 서울 fallback');
+      print('[코코숨] 역지오코딩 실패: $e');
     }
-    return '서울';
+    return const _LocationInfo(sidoName: '서울');
   }
 
-  /// "경기도" → "경기", "서울특별시" → "서울" 등으로 변환.
-  /// 에어코리아 API sidoName 파라미터가 도/특별시/광역시 접미사 없는 형태를 요구.
+  /// "경기도" → "경기", "서울특별시" → "서울" 등 에어코리아 포맷으로 정규화.
   static String _normalizeAdminArea(String raw) {
-    // 정확히 매핑되는 케이스 먼저 처리
     const exact = {
       '서울특별시': '서울',
       '부산광역시': '부산',
@@ -138,16 +100,165 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
       '경상남도': '경남',
       '제주특별자치도': '제주',
     };
-
     if (exact.containsKey(raw)) return exact[raw]!;
 
-    // 접미사 제거 fallback: "○○도" → "○○", "○○시" → "○○"
     for (final suffix in ['특별자치도', '특별자치시', '광역시', '특별시', '도', '시']) {
       if (raw.endsWith(suffix)) {
         return raw.substring(0, raw.length - suffix.length);
       }
     }
-
     return raw.isEmpty ? '서울' : raw;
   }
+
+  // ── 데이터 취득 ───────────────────────────────────────────────
+
+  /// 시도 내 모든 측정소 데이터를 한 번에 가져옴 (numOfRows=100).
+  Future<List<Map<String, dynamic>>?> _fetchAllStations(String sidoName) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl$_endpoint',
+        queryParameters: {
+          'sidoName': sidoName,
+          'searchCondition': 'HOUR',
+          'numOfRows': '100',
+          'pageNo': '1',
+        },
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+                    'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/21A329',
+            'Referer': _baseUrl,
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      List<dynamic>? raw;
+      final data = response.data;
+      if (data is Map) {
+        raw = (data['list'] ?? data['data'] ?? data['items']) as List<dynamic>?;
+      } else if (data is List) {
+        raw = data;
+      }
+
+      if (raw == null || raw.isEmpty) return null;
+
+      return raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (e) {
+      // ignore: avoid_print
+      print('[코코숨] 에어코리아 요청 실패: $e');
+      return null;
+    }
+  }
+
+  // ── 최근접 측정소 선택 ────────────────────────────────────────
+
+  Map<String, dynamic> _findNearest({
+    required List<Map<String, dynamic>> stations,
+    required double userLat,
+    required double userLon,
+    String? districtHint,
+  }) {
+    // 1순위: dmX/dmY 좌표 있으면 하버사인 최단거리
+    final withCoords = stations.where((s) {
+      final x = s['dmX']?.toString().trim() ?? '';
+      final y = s['dmY']?.toString().trim() ?? '';
+      return x.isNotEmpty && x != '-' && y.isNotEmpty && y != '-';
+    }).toList();
+
+    if (withCoords.isNotEmpty) {
+      withCoords.sort((a, b) {
+        final da = _haversineKm(
+          userLat, userLon,
+          double.parse(a['dmY'].toString()),
+          double.parse(a['dmX'].toString()),
+        );
+        final db = _haversineKm(
+          userLat, userLon,
+          double.parse(b['dmY'].toString()),
+          double.parse(b['dmX'].toString()),
+        );
+        return da.compareTo(db);
+      });
+      // ignore: avoid_print
+      print('[코코숨] 최근접 측정소(좌표): ${withCoords.first['stationName']} '
+          '(${_haversineKm(userLat, userLon, double.parse(withCoords.first['dmY'].toString()), double.parse(withCoords.first['dmX'].toString())).toStringAsFixed(1)}km)');
+      return withCoords.first;
+    }
+
+    // 2순위: 역지오코딩 구/군명으로 stationName 문자열 매칭
+    if (districtHint != null && districtHint.isNotEmpty) {
+      final matched = _matchByDistrict(stations, districtHint);
+      if (matched != null) {
+        // ignore: avoid_print
+        print('[코코숨] 최근접 측정소(구 매칭): ${matched['stationName']}');
+        return matched;
+      }
+    }
+
+    // 3순위: 첫 번째 측정소 fallback
+    // ignore: avoid_print
+    print('[코코숨] 최근접 측정소(fallback): ${stations.first['stationName']}');
+    return stations.first;
+  }
+
+  /// "강남구", "수원시 팔달구" 등 district 힌트로 stationName 매칭.
+  Map<String, dynamic>? _matchByDistrict(
+    List<Map<String, dynamic>> stations,
+    String district,
+  ) {
+    // district에서 최소 단위 추출: "수원시 팔달구" → ["팔달구", "수원시"]
+    final tokens = district
+        .split(RegExp(r'\s+'))
+        .map((t) => t.replaceAll(RegExp(r'[시구군]$'), ''))
+        .where((t) => t.length >= 2)
+        .toList();
+
+    // 긴 토큰부터 우선 매칭 (더 구체적일수록 우선)
+    tokens.sort((a, b) => b.length.compareTo(a.length));
+
+    for (final token in tokens) {
+      for (final s in stations) {
+        final name = s['stationName']?.toString() ?? '';
+        if (name.contains(token) || token.contains(name.replaceAll(RegExp(r'[시구군]$'), ''))) {
+          return s;
+        }
+      }
+    }
+    return null;
+  }
+
+  // ── 수학 유틸 ─────────────────────────────────────────────────
+
+  /// 두 WGS84 좌표 간 거리 (km, 하버사인 공식).
+  static double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLon = _rad(lon2 - lon1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  static double _rad(double deg) => deg * math.pi / 180;
+}
+
+// ── 내부 데이터 클래스 ──────────────────────────────────────────
+
+class _LocationInfo {
+  final String sidoName;
+  final String? districtName;
+
+  const _LocationInfo({required this.sidoName, this.districtName});
 }
