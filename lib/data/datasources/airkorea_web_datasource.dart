@@ -71,7 +71,7 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
           'lat': lat.toString(),
           'lon': lon.toString(),
           'accept-language': 'ko',
-          'zoom': '10',
+          'zoom': '8', // zoom=8: 특별시/광역시→city, 도→province+city 모두 반환
         },
         options: Options(
           headers: {
@@ -85,15 +85,20 @@ class AirKoreaWebDataSource implements AirQualityDataSource {
 
       final address = response.data['address'] as Map<String, dynamic>?;
       if (address != null) {
-        // state: "경기도", "서울특별시", "인천광역시" 등
-        final rawState = address['state']?.toString() ?? '';
-        final sido = _normalizeAdminArea(rawState);
+        // zoom=8 기준 한국 주소 필드 패턴:
+        //   특별시/광역시: province 없음, city="서울특별시", borough="중구"
+        //   도 내 시: province="경기도", city="수원시"
+        //   도 내 군: province="경기도", county="양평군"
+        final rawProvince = address['province']?.toString() ?? '';
+        final rawCity = address['city']?.toString() ?? '';
+        // 시도 = province 우선(도 단위), 없으면 city(특별시/광역시)
+        final sido = _normalizeAdminArea(
+            rawProvince.isNotEmpty ? rawProvince : rawCity);
 
-        // 구/군 힌트: city_district(강남구), suburb(행당동), county(광주시)
-        final district = (address['city_district'] ??
-                address['suburb'] ??
-                address['county'] ??
-                address['city'])
+        // 구/군 힌트: borough(광역시 구) → city(도내 시) → county(도내 군)
+        final district = (address['borough'] ??
+                address['city'] ??
+                address['county'])
             ?.toString();
 
         // ignore: avoid_print
