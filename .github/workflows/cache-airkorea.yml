@@ -1,0 +1,99 @@
+name: AirKorea Data Cache
+
+on:
+  schedule:
+    - cron: '0,30 * * * *'   # 30분마다 갱신
+  workflow_dispatch:           # 수동 실행 가능
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-cache:
+    name: Fetch AirKorea & Push to gh-pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages        # gh-pages 브랜치에 직접 커밋
+
+      - name: Fetch AirKorea data for all provinces
+        run: |
+          PROVINCES=("서울" "부산" "대구" "인천" "광주" "대전" "울산" "경기" "강원" "충북" "충남" "전북" "전남" "경북" "경남" "제주" "세종")
+          ALL_STATIONS="[]"
+          FETCHED=0
+
+          for SIDO in "${PROVINCES[@]}"; do
+            ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SIDO'))")
+            URL="https://www.airkorea.or.kr/web/ajax/getCtprvnRltmMesureDnsty?sidoName=${ENCODED}&searchCondition=HOUR&numOfRows=100&pageNo=1"
+            RESP=$(curl -sf \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+              -H "Referer: https://www.airkorea.or.kr/web/realSearch" \
+              -H "Accept: application/json, text/javascript, */*; q=0.01" \
+              -H "X-Requested-With: XMLHttpRequest" \
+              "$URL" 2>/dev/null || echo "")
+
+            if echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin)" 2>/dev/null; then
+              COUNT=$(echo "$RESP" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+items = []
+if isinstance(d, list):
+    items = d
+elif isinstance(d, dict):
+    items = d.get('list', d.get('data', d.get('items', []))) or []
+print(len(items))
+")
+              ALL_STATIONS=$(echo "$ALL_STATIONS $RESP" | python3 -c "
+import json, sys
+parts = sys.stdin.read().strip().split('\n', 1)
+existing = json.loads(parts[0])
+new_resp = json.loads(parts[1])
+if isinstance(new_resp, list):
+    new_items = new_resp
+elif isinstance(new_resp, dict):
+    new_items = new_resp.get('list', new_resp.get('data', new_resp.get('items', []))) or []
+else:
+    new_items = []
+print(json.dumps(existing + new_items, ensure_ascii=False))
+" <<< "$ALL_STATIONS
+$RESP")
+              echo "✓ $SIDO: $COUNT stations"
+              FETCHED=$((FETCHED + 1))
+            else
+              echo "✗ $SIDO: fetch failed"
+            fi
+            sleep 0.5
+          done
+
+          TOTAL=$(echo "$ALL_STATIONS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "Total: $TOTAL stations from $FETCHED provinces"
+
+          # 최종 JSON 저장
+          mkdir -p data
+          python3 -c "
+import json, sys, datetime
+stations = json.loads(sys.stdin.read())
+output = {
+  'updatedAt': datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).isoformat(),
+  'stationCount': len(stations),
+  'stations': stations
+}
+print(json.dumps(output, ensure_ascii=False, separators=(',', ':')))
+" <<< "$ALL_STATIONS" > data/airquality_cache.json
+
+          ls -lh data/airquality_cache.json
+          echo "Preview:" && head -c 300 data/airquality_cache.json
+
+      - name: Commit & push cache
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/airquality_cache.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update AirKorea cache $(date +'%Y-%m-%d %H:%M KST' --date='+9 hours')"
+            git push
+          fi

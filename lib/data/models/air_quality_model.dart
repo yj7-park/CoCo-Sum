@@ -52,6 +52,29 @@ class AirQualityModel extends AirQuality {
     );
   }
 
+  /// 미세미세(misemise.co.kr) S3 JSON에서 생성.
+  ///
+  /// 필드: stationName, address, latitude, longitude, dataTime,
+  ///       pm25Value, pm10Value, no2Value, o3Value, coValue, so2Value
+  factory AirQualityModel.fromMisemiseJson(Map<String, dynamic> json) {
+    // address에서 시도명 추출: "경기도 수원시 팔달구 ..." → "경기도"
+    final address = json['address'] as String? ?? '';
+    final cityName = address.isNotEmpty ? address.split(' ').first : null;
+
+    return AirQualityModel(
+      stationName: json['stationName'] as String? ?? '알 수 없음',
+      cityName: cityName,
+      pm25: _parseDouble(json['pm25Value']),
+      pm10: _parseDouble(json['pm10Value']),
+      o3: _parseDouble(json['o3Value']),
+      no2: _parseDouble(json['no2Value']),
+      co: _parseDouble(json['coValue']),
+      so2: _parseDouble(json['so2Value']),
+      measuredAt:
+          _parseDateTime(json['dataTime'] as String?) ?? DateTime.now(),
+    );
+  }
+
   /// 데이터 로드 실패 시 또는 개발/테스트용 목업 데이터.
   factory AirQualityModel.mock({String stationName = '서울 종로구'}) {
     return AirQualityModel(

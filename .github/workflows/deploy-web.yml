@@ -30,6 +30,16 @@ jobs:
       - name: Build Web
         run: flutter build web --release --base-href /CoCo-Sum/
 
+      - name: Preserve existing air quality cache
+        run: |
+          # 이전 gh-pages에 있는 실시간 캐시 파일이 있으면 빌드 결과물에 포함시켜 보존
+          mkdir -p build/web/data
+          curl -sf "https://yj7-park.github.io/CoCo-Sum/data/airquality_cache.json" \
+            -o build/web/data/airquality_cache.json 2>/dev/null \
+            || cp web/data/airquality_cache.json build/web/data/airquality_cache.json \
+            || echo '{"updatedAt":"","stationCount":0,"stations":[]}' > build/web/data/airquality_cache.json
+          echo "Cache size: $(wc -c < build/web/data/airquality_cache.json) bytes"
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:

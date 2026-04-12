@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../data/datasources/air_quality_datasource.dart';
-import '../../data/datasources/airkorea_web_datasource.dart';
+import '../../data/datasources/misemise_datasource.dart';
 import '../../data/repositories/air_quality_repository_impl.dart';
 import '../../domain/entities/air_quality.dart';
 import '../../domain/repositories/air_quality_repository.dart';
@@ -20,9 +20,12 @@ final dioProvider = Provider<Dio>((ref) {
 });
 
 /// 데이터 소스.
-/// 공식 API로 교체 시 여기서 AirKoreaApiDataSource(...)로 바꾸기만 하면 됩니다.
+/// 미세미세(misemise.co.kr) S3 공개 JSON — 웹/모바일 모두 동작, CORS 허용.
+/// 전국 670개 측정소, GPS 좌표 포함, 약 1시간마다 갱신.
+///
+/// 공식 에어코리아 API로 교체 시 AirKoreaApiDataSource(...)로 바꾸기만 하면 됩니다.
 final dataSourceProvider = Provider<AirQualityDataSource>((ref) {
-  return AirKoreaWebDataSource(ref.watch(dioProvider));
+  return MisemiseDataSource(ref.watch(dioProvider));
 });
 
 final repositoryProvider = Provider<AirQualityRepository>((ref) {
