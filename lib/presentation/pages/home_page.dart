@@ -3,19 +3,56 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/entities/air_quality.dart';
+import '../../services/update_checker.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/action_banner.dart';
 import '../widgets/coco_character.dart';
 import '../widgets/pollutant_card.dart';
 
-class HomePage extends ConsumerWidget {
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  bool _updateDialogShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 업데이트 체크는 빌드 이후에 실행
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _watchForUpdate();
+    });
+  }
+
+  void _watchForUpdate() {
+    ref.listenManual(updateInfoProvider, (_, next) {
+      next.whenData((info) {
+        if (info != null && !_updateDialogShown && mounted) {
+          _updateDialogShown = true;
+          _showUpdateDialog(context, info);
+        }
+      });
+    });
+  }
+
+  void _showUpdateDialog(BuildContext ctx, UpdateInfo info) {
+    showDialog(
+      context: ctx,
+      barrierDismissible: true,
+      builder: (_) => _UpdateDialog(info: info),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final airQuality = ref.watch(airQualityProvider);
 
     return airQuality.when(
@@ -211,28 +248,29 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final timeStr = DateFormat('HH:mm').format(now);
-    final locationName = data.cityName != null
-        ? '${data.cityName} ${data.stationName}'
-        : data.stationName;
+
+    // 사용자 GPS 위치 (역지오코딩) / 측정소 위치
+    final userLoc = data.userLocationName;
+    final stationLoc = data.stationLocationShort ?? data.stationName;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.location_on, size: 16, color: Colors.white70),
-              const SizedBox(width: 4),
-              Text(
-                locationName,
-                style: GoogleFonts.notoSansKr(
-                  fontSize: 14,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(Icons.location_on, size: 16, color: Colors.white70),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: _LocationText(
+                    userLocation: userLoc,
+                    stationLocation: stationLoc,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           Row(
             children: [
@@ -254,6 +292,61 @@ class _TopBar extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "경기 수원시 (경기 팔달구 데이터 기준)" 형태 위치 표시 위젯
+class _LocationText extends StatelessWidget {
+  final String? userLocation;
+  final String stationLocation;
+
+  const _LocationText({
+    required this.userLocation,
+    required this.stationLocation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (userLocation == null) {
+      // 역지오코딩 전/실패: 측정소 위치만 표시
+      return Text(
+        stationLocation,
+        style: GoogleFonts.notoSansKr(
+          fontSize: 14,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    final isSame = userLocation == stationLocation ||
+        stationLocation.startsWith(userLocation!);
+
+    return RichText(
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: userLocation,
+            style: GoogleFonts.notoSansKr(
+              fontSize: 14,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (!isSame)
+            TextSpan(
+              text: ' ($stationLocation 데이터)',
+              style: GoogleFonts.notoSansKr(
+                fontSize: 11,
+                color: Colors.white70,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
         ],
       ),
     );
@@ -330,6 +423,100 @@ class _PollutantRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── 업데이트 다이얼로그 ───────────────────────────────────────
+
+class _UpdateDialog extends StatelessWidget {
+  final UpdateInfo info;
+  const _UpdateDialog({required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          const Text('🎉', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 8),
+          Text(
+            '업데이트가 있어요!',
+            style: GoogleFonts.notoSansKr(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${info.currentVersion} → ${info.latestVersion}',
+            style: GoogleFonts.notoSansKr(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+          ),
+          if (info.releaseNotes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '변경사항',
+              style: GoogleFonts.notoSansKr(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              info.releaseNotes
+                  .split('\n')
+                  .where((l) => l.trim().isNotEmpty)
+                  .take(5)
+                  .join('\n'),
+              style: GoogleFonts.notoSansKr(
+                fontSize: 12,
+                color: Colors.grey[700],
+                height: 1.5,
+              ),
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            '나중에',
+            style: GoogleFonts.notoSansKr(color: Colors.grey[500]),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            Navigator.of(context).pop();
+            final uri = Uri.parse(info.downloadUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.good,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Text(
+            '업데이트',
+            style: GoogleFonts.notoSansKr(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     );
   }
 }

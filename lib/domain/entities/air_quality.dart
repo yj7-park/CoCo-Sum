@@ -66,6 +66,16 @@ class AirQuality {
   final DateTime measuredAt;
   final bool isMockData;
 
+  /// GPS 기반 역지오코딩으로 얻은 사용자 실제 위치 (예: "경기 수원시").
+  final String? userLocationName;
+
+  /// 데이터를 제공한 측정소의 짧은 주소 (예: "경기 수원시 팔달구").
+  final String? stationLocationShort;
+
+  /// 미세미세 등 외부 소스에서 미리 계산된 종합 등급(WHO 기준).
+  /// null이면 pm25Grade / pm10Grade 중 더 나쁜 값으로 계산.
+  final AirQualityGrade? _precomputedGrade;
+
   const AirQuality({
     required this.stationName,
     this.cityName,
@@ -77,28 +87,38 @@ class AirQuality {
     this.so2,
     required this.measuredAt,
     this.isMockData = false,
-  });
+    this.userLocationName,
+    this.stationLocationShort,
+    AirQualityGrade? precomputedGrade,
+  }) : _precomputedGrade = precomputedGrade;
 
+  /// WHO 2021 AQG 기반 4단계 PM2.5 등급
+  /// 좋음 ≤15 / 보통 ≤25 / 나쁨 ≤50 / 매우나쁨 51+
   AirQualityGrade get pm25Grade => _gradeFromPm25(pm25);
+
+  /// WHO 2021 AQG 기반 4단계 PM10 등급
+  /// 좋음 ≤30 / 보통 ≤50 / 나쁨 ≤100 / 매우나쁨 101+
   AirQualityGrade get pm10Grade => _gradeFromPm10(pm10);
 
   AirQualityGrade get overallGrade {
+    if (_precomputedGrade != null) return _precomputedGrade;
     return [pm25Grade, pm10Grade].reduce((a, b) => a.index > b.index ? a : b);
   }
 
+  // ── WHO 2021 임계값 ──────────────────────────────────────────
   static AirQualityGrade _gradeFromPm25(double? v) {
     if (v == null) return AirQualityGrade.moderate;
     if (v <= 15) return AirQualityGrade.good;
-    if (v <= 35) return AirQualityGrade.moderate;
-    if (v <= 75) return AirQualityGrade.bad;
+    if (v <= 25) return AirQualityGrade.moderate;
+    if (v <= 50) return AirQualityGrade.bad;
     return AirQualityGrade.veryBad;
   }
 
   static AirQualityGrade _gradeFromPm10(double? v) {
     if (v == null) return AirQualityGrade.moderate;
     if (v <= 30) return AirQualityGrade.good;
-    if (v <= 80) return AirQualityGrade.moderate;
-    if (v <= 150) return AirQualityGrade.bad;
+    if (v <= 50) return AirQualityGrade.moderate;
+    if (v <= 100) return AirQualityGrade.bad;
     return AirQualityGrade.veryBad;
   }
 }

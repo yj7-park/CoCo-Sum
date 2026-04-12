@@ -8,6 +8,7 @@ import '../../data/repositories/air_quality_repository_impl.dart';
 import '../../domain/entities/air_quality.dart';
 import '../../domain/repositories/air_quality_repository.dart';
 import '../../domain/usecases/get_current_air_quality.dart';
+import '../../services/update_checker.dart';
 
 // ── DI 트리 ────────────────────────────────────────────────────
 
@@ -66,6 +67,17 @@ final airQualityProvider = FutureProvider.autoDispose<AirQuality>((ref) async {
     latitude: position.latitude,
     longitude: position.longitude,
   );
+});
+
+// ── 자동 업데이트 ─────────────────────────────────────────────
+
+final updateCheckerProvider = Provider<UpdateChecker>((ref) {
+  return UpdateChecker(ref.watch(dioProvider));
+});
+
+/// 앱 시작 시 1회 업데이트 체크. 업데이트가 있으면 [UpdateInfo], 없으면 null.
+final updateInfoProvider = FutureProvider.autoDispose<UpdateInfo?>((ref) async {
+  return ref.watch(updateCheckerProvider).checkForUpdate();
 });
 
 // ── 내부 헬퍼 ─────────────────────────────────────────────────

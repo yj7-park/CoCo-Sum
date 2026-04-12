@@ -7,13 +7,12 @@ import 'air_quality_datasource.dart';
 
 /// 미세미세(misemise.co.kr)의 S3 공개 데이터를 사용하는 구현체.
 ///
-/// - URL: https://s3.ap-northeast-2.amazonaws.com/misemise-fine-dust-data/current-data/map-data/data.json
-/// - CORS: Access-Control-Allow-Origin: * → 웹/모바일 모두 동작
-/// - 전국 670개 측정소, latitude/longitude 포함
-/// - 약 1시간마다 갱신
+/// - 데이터: https://s3.ap-northeast-2.amazonaws.com/misemise-fine-dust-data/...
+///   CORS: Access-Control-Allow-Origin: * → 웹/모바일 모두 동작
+///   전국 670개 측정소, latitude/longitude 포함, 약 1시간마다 갱신
+/// - 역지오코딩: Nominatim(OpenStreetMap) — 별도 API 키 불필요
 ///
-/// GPS 좌표를 받아 전국 측정소 중 하버사인 최단거리 측정소 데이터를 반환.
-/// 역지오코딩 불필요.
+/// GPS → 하버사인 최근접 측정소 선택. 역지오코딩 불필요.
 class MisemiseDataSource implements AirQualityDataSource {
   final Dio _dio;
 
@@ -27,6 +26,38 @@ class MisemiseDataSource implements AirQualityDataSource {
     required double latitude,
     required double longitude,
   }) async {
+    // 미세미세 데이터 + 사용자 위치명을 병렬로 가져옴
+    final results = await Future.wait([
+      _fetchStations(),
+      _fetchUserLocationName(latitude, longitude),
+    ]);
+
+    final stations = results[0] as List<Map<String, dynamic>>?;
+    final userLocationName = results[1] as String?;
+
+    if (stations == null || stations.isEmpty) {
+      return AirQualityModel.mock(stationName: '미세미세 데이터 없음');
+    }
+
+    final nearest = _findNearest(
+      stations: stations,
+      userLat: latitude,
+      userLon: longitude,
+    );
+
+    // ignore: avoid_print
+    print('[코코숨] 측정소: ${nearest['stationName']} '
+        '(${_haversineKm(latitude, longitude, (nearest['latitude'] as num).toDouble(), (nearest['longitude'] as num).toDouble()).toStringAsFixed(1)}km)');
+
+    return AirQualityModel.fromMisemiseJson(
+      nearest,
+      userLocationName: userLocationName,
+    );
+  }
+
+  // ── 미세미세 전국 데이터 ──────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>?> _fetchStations() async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
         _dataUrl,
@@ -36,43 +67,73 @@ class MisemiseDataSource implements AirQualityDataSource {
           sendTimeout: const Duration(seconds: 10),
         ),
       );
+      final rawData = response.data?['data'] as Map<String, dynamic>?;
+      if (rawData == null) return null;
 
-      final body = response.data;
-      final rawData = body?['data'] as Map<String, dynamic>?;
-      if (rawData == null || rawData.isEmpty) {
-        return AirQualityModel.mock(stationName: '미세미세 데이터 없음');
-      }
-
-      final updateTime = (body?['data_info'] as Map?)?['updateTime'] as String?;
-
-      // 좌표 있는 측정소만 필터링
-      final stations = rawData.values
+      return rawData.values
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .where((s) => s['latitude'] != null && s['longitude'] != null)
           .toList();
-
-      if (stations.isEmpty) {
-        return AirQualityModel.mock(stationName: '좌표 없음');
-      }
-
-      final nearest = _findNearest(
-        stations: stations,
-        userLat: latitude,
-        userLon: longitude,
-      );
-
-      // ignore: avoid_print
-      print('[코코숨] 미세미세 측정소: ${nearest['stationName']} '
-          '(${_haversineKm(latitude, longitude, (nearest['latitude'] as num).toDouble(), (nearest['longitude'] as num).toDouble()).toStringAsFixed(1)}km, 갱신: $updateTime)');
-
-      return AirQualityModel.fromMisemiseJson(nearest);
     } catch (e) {
       // ignore: avoid_print
       print('[코코숨] 미세미세 요청 실패: $e');
-      return AirQualityModel.mock(stationName: '데이터 오류');
+      return null;
     }
   }
+
+  // ── 사용자 위치명 (Nominatim 역지오코딩) ────────────────────
+
+  /// zoom=8: 특별시/광역시 → 시도+구, 도내 시 → 시도+시 반환.
+  /// 예) "서울 중구", "경기 수원시", "부산 연제구"
+  Future<String?> _fetchUserLocationName(double lat, double lon) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        'https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {
+          'format': 'jsonv2',
+          'lat': lat.toString(),
+          'lon': lon.toString(),
+          'accept-language': 'ko',
+          'zoom': '8',
+        },
+        options: Options(
+          headers: {
+            'User-Agent': 'CoCo-Sum/1.0 (air-quality-app)',
+            'Accept': 'application/json',
+          },
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+
+      final address = response.data?['address'] as Map<String, dynamic>?;
+      if (address == null) return null;
+
+      // zoom=8 패턴:
+      //   특별시/광역시: province 없음, city="서울특별시", borough="중구"
+      //   도내 시:       province="경기도",  city="수원시"
+      //   도내 군:       province="경기도",  county="양평군"
+      final province = address['province']?.toString() ?? '';
+      final city = address['city']?.toString() ?? '';
+      final borough = (address['borough'] ?? address['county'])?.toString();
+
+      final sido = _normSido(province.isNotEmpty ? province : city);
+      final sub = borough ?? (province.isNotEmpty ? city : '');
+
+      if (sido.isEmpty) return null;
+      final name = sub.isNotEmpty && sub != city ? '$sido $sub' : sido;
+      // ignore: avoid_print
+      print('[코코숨] 사용자 위치: $name');
+      return name;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[코코숨] 역지오코딩 실패: $e');
+      return null;
+    }
+  }
+
+  // ── 최근접 측정소 선택 ─────────────────────────────────────
 
   Map<String, dynamic> _findNearest({
     required List<Map<String, dynamic>> stations,
@@ -94,6 +155,23 @@ class MisemiseDataSource implements AirQualityDataSource {
     });
     return stations.first;
   }
+
+  // ── 시도명 정규화 ──────────────────────────────────────────
+
+  static String _normSido(String raw) {
+    const map = {
+      '서울특별시': '서울', '부산광역시': '부산', '대구광역시': '대구',
+      '인천광역시': '인천', '광주광역시': '광주', '대전광역시': '대전',
+      '울산광역시': '울산', '세종특별자치시': '세종', '경기도': '경기',
+      '강원특별자치도': '강원', '강원도': '강원', '충청북도': '충북',
+      '충청남도': '충남', '전라북도': '전북', '전북특별자치도': '전북',
+      '전라남도': '전남', '경상북도': '경북', '경상남도': '경남',
+      '제주특별자치도': '제주',
+    };
+    return map[raw] ?? raw;
+  }
+
+  // ── 수학 유틸 ─────────────────────────────────────────────
 
   static double _haversineKm(
       double lat1, double lon1, double lat2, double lon2) {

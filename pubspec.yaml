@@ -37,6 +37,12 @@ dependencies:
   # 폰트
   google_fonts: ^6.2.1
 
+  # 앱 버전 정보 (자동 업데이트 체크용)
+  package_info_plus: ^8.0.0
+
+  # URL 실행 (업데이트 다운로드 페이지 열기)
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
