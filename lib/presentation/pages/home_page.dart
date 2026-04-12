@@ -323,8 +323,8 @@ class _LocationText extends StatelessWidget {
       );
     }
 
-    final isSame = userLocation == stationLocation ||
-        stationLocation.startsWith(userLocation!);
+    // 완전히 같을 때만 중복 생략 (prefix 비교는 오탐 가능성 있어 제거)
+    final isSame = userLocation == stationLocation;
 
     return RichText(
       overflow: TextOverflow.ellipsis,

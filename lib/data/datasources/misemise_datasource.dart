@@ -110,19 +110,28 @@ class MisemiseDataSource implements AirQualityDataSource {
       final address = response.data?['address'] as Map<String, dynamic>?;
       if (address == null) return null;
 
-      // zoom=8 패턴:
-      //   특별시/광역시: province 없음, city="서울특별시", borough="중구"
-      //   도내 시:       province="경기도",  city="수원시"
-      //   도내 군:       province="경기도",  county="양평군"
+      // zoom=8 주소 패턴:
+      //   특별시/광역시: province="",      city="서울특별시", borough="중구"
+      //   도내 시:       province="경기도", city="수원시",     borough=""
+      //   도내 군:       province="경기도", city="",           county="양평군"
       final province = address['province']?.toString() ?? '';
-      final city = address['city']?.toString() ?? '';
-      final borough = (address['borough'] ?? address['county'])?.toString();
+      final city     = address['city']?.toString() ?? '';
+      final borough  = address['borough']?.toString() ?? '';
+      final county   = address['county']?.toString() ?? '';
 
-      final sido = _normSido(province.isNotEmpty ? province : city);
-      final sub = borough ?? (province.isNotEmpty ? city : '');
+      // 시도: 도 지역은 province, 특별시/광역시는 city
+      final rawSido = province.isNotEmpty ? province : city;
+      final sido = _normSido(rawSido);
+
+      // 세부 지역:
+      //   특별시/광역시 → borough (city 자체가 sido이므로 제외)
+      //   도내 → city(시) 또는 county(군)
+      final detail = province.isEmpty
+          ? borough  // 특별시/광역시: borough="중구"
+          : (city.isNotEmpty ? city : county); // 도내: "수원시" or "양평군"
 
       if (sido.isEmpty) return null;
-      final name = sub.isNotEmpty && sub != city ? '$sido $sub' : sido;
+      final name = detail.isNotEmpty ? '$sido $detail' : sido;
       // ignore: avoid_print
       print('[코코숨] 사용자 위치: $name');
       return name;

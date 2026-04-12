@@ -65,10 +65,14 @@ class AirQualityModel extends AirQuality {
     String? userLocationName,
   }) {
     final address = json['address'] as String? ?? '';
-    // "경기도 수원시 팔달구 인계로 178..." → "경기 수원시 팔달구"
-    final stationShort = _shortAddress(address);
-    final cityName =
-        address.isNotEmpty ? address.split(' ').first : null;
+    final stationName = json['stationName'] as String? ?? '알 수 없음';
+    final rawCity = address.isNotEmpty ? address.split(' ').first : null;
+    final cityName = rawCity;
+
+    // 측정소 표시: "경기 영통동" 형태 (시도 정규화 + 측정소명)
+    final stationShort = rawCity != null
+        ? '${_normSido(rawCity)} $stationName'
+        : stationName;
 
     // 미세미세가 WHO 기준으로 미리 계산한 종합 등급 (1~4)
     final rawGrade =
@@ -76,7 +80,7 @@ class AirQualityModel extends AirQuality {
     final precomputed = _mapIntGrade(rawGrade);
 
     return AirQualityModel(
-      stationName: json['stationName'] as String? ?? '알 수 없음',
+      stationName: stationName,
       cityName: cityName,
       pm25: _parseDouble(json['pm25Value']),
       pm10: _parseDouble(json['pm10Value']),
@@ -90,17 +94,6 @@ class AirQualityModel extends AirQuality {
       stationLocationShort: stationShort,
       precomputedGrade: precomputed,
     );
-  }
-
-  /// "경기도 수원시 팔달구 인계로..." → "경기 수원시 팔달구"
-  static String? _shortAddress(String address) {
-    if (address.isEmpty) return null;
-    final parts = address.split(' ').where((s) => s.isNotEmpty).toList();
-    if (parts.isEmpty) return null;
-    // 첫 토큰 정규화 (시도)
-    final sido = _normSido(parts[0]);
-    final rest = parts.skip(1).take(2).join(' ');
-    return rest.isEmpty ? sido : '$sido $rest';
   }
 
   static String _normSido(String raw) {
