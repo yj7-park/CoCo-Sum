@@ -52,21 +52,20 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      # 서명 키가 있는 경우 (Secrets에 KEYSTORE_BASE64 등록 후 활성화)
-      # - name: Setup signing
-      #   env:
-      #     KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      #     KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      #     KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      #     STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-      #   run: |
-      #     echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
-      #     cat > android/key.properties <<EOF
-      #     storePassword=$STORE_PASSWORD
-      #     keyPassword=$KEY_PASSWORD
-      #     keyAlias=$KEY_ALIAS
-      #     storeFile=release.jks
-      #     EOF
+      - name: Setup signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=../app/release.jks
+          EOF
 
       - name: Build APK (release)
         run: flutter build apk --release --split-per-abi

@@ -74,9 +74,9 @@ class AirQualityModel extends AirQuality {
         ? '${_normSido(rawCity)} $stationName'
         : stationName;
 
-    // 미세미세가 WHO 기준으로 미리 계산한 종합 등급 (1~4)
+    // 미세미세가 WHO 기준으로 미리 계산한 종합 등급 (1~8)
     final rawGrade =
-        json['overallGrade_whoStandard_fourLevel'] as int?;
+        json['overallGrade_whoStandard_eightLevel'] as int?;
     final precomputed = _mapIntGrade(rawGrade);
 
     return AirQualityModel(
@@ -111,10 +111,14 @@ class AirQualityModel extends AirQuality {
 
   static AirQualityGrade? _mapIntGrade(int? v) {
     switch (v) {
-      case 1: return AirQualityGrade.good;
-      case 2: return AirQualityGrade.moderate;
-      case 3: return AirQualityGrade.bad;
-      case 4: return AirQualityGrade.veryBad;
+      case 1: return AirQualityGrade.best;
+      case 2: return AirQualityGrade.good;
+      case 3: return AirQualityGrade.fine;
+      case 4: return AirQualityGrade.moderate;
+      case 5: return AirQualityGrade.bad;
+      case 6: return AirQualityGrade.quiteBad;
+      case 7: return AirQualityGrade.veryBad;
+      case 8: return AirQualityGrade.worst;
       default: return null;
     }
   }

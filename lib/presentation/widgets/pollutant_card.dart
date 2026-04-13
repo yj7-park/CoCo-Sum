@@ -107,10 +107,14 @@ class PollutantCard extends StatelessWidget {
   }
 
   double _gradeToProgress(AirQualityGrade g) => switch (g) {
+        AirQualityGrade.best => 0.125,
         AirQualityGrade.good => 0.25,
+        AirQualityGrade.fine => 0.375,
         AirQualityGrade.moderate => 0.50,
-        AirQualityGrade.bad => 0.75,
-        AirQualityGrade.veryBad => 1.0,
+        AirQualityGrade.bad => 0.625,
+        AirQualityGrade.quiteBad => 0.75,
+        AirQualityGrade.veryBad => 0.875,
+        AirQualityGrade.worst => 1.0,
       };
 }
 

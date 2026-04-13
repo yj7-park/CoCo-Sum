@@ -113,7 +113,7 @@ class _CocoPainter extends CustomPainter {
     _drawCloudBody(canvas, cx, cy, w);
     _drawEyes(canvas, cx, cy, w);
     _drawExpression(canvas, cx, cy, w);
-    if (grade == AirQualityGrade.good) {
+    if (grade == AirQualityGrade.best || grade == AirQualityGrade.good) {
       _drawCheeks(canvas, cx, cy, w);
     }
   }
@@ -175,10 +175,14 @@ class _CocoPainter extends CustomPainter {
   }
 
   Color _bodyColor() => switch (grade) {
-        AirQualityGrade.good => const Color(0xFFFEFEFF),
+        AirQualityGrade.best => const Color(0xFFFEFEFF),
+        AirQualityGrade.good => const Color(0xFFF5FCFF),
+        AirQualityGrade.fine => const Color(0xFFF0FDFB),
         AirQualityGrade.moderate => const Color(0xFFFFFDE7),
-        AirQualityGrade.bad => const Color(0xFFFFF3E0),
-        AirQualityGrade.veryBad => const Color(0xFFF3E5F5),
+        AirQualityGrade.bad => const Color(0xFFFFF8E1),
+        AirQualityGrade.quiteBad => const Color(0xFFFFF3E0),
+        AirQualityGrade.veryBad => const Color(0xFFFFF5F5),
+        AirQualityGrade.worst => const Color(0xFFF3E5F5),
       };
 
   // ── 눈 ───────────────────────────────────────────────────
@@ -248,23 +252,31 @@ class _CocoPainter extends CustomPainter {
   }
 
   Color _irisColor() => switch (grade) {
+        AirQualityGrade.best => const Color(0xFF29B6F6),
         AirQualityGrade.good => const Color(0xFF64B5F6),
+        AirQualityGrade.fine => const Color(0xFF4DB6AC),
         AirQualityGrade.moderate => const Color(0xFF81C784),
-        AirQualityGrade.bad => const Color(0xFFFFB74D),
-        AirQualityGrade.veryBad => const Color(0xFFCE93D8),
+        AirQualityGrade.bad => const Color(0xFFFFD54F),
+        AirQualityGrade.quiteBad => const Color(0xFFFFB74D),
+        AirQualityGrade.veryBad => const Color(0xFFFF8A65),
+        AirQualityGrade.worst => const Color(0xFFCE93D8),
       };
 
   // ── 표정 ─────────────────────────────────────────────────
 
   void _drawExpression(Canvas canvas, double cx, double cy, double w) {
     switch (grade) {
+      case AirQualityGrade.best:
       case AirQualityGrade.good:
         _drawBigSmile(canvas, cx, cy, w);
+      case AirQualityGrade.fine:
       case AirQualityGrade.moderate:
         _drawSmallSmile(canvas, cx, cy, w);
       case AirQualityGrade.bad:
+      case AirQualityGrade.quiteBad:
         _drawMask(canvas, cx, cy, w);
       case AirQualityGrade.veryBad:
+      case AirQualityGrade.worst:
         _drawWorriedFace(canvas, cx, cy, w);
     }
   }
