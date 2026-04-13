@@ -102,7 +102,7 @@ class _LoadingScreen extends StatelessWidget {
               CocoCharacter(grade: AirQualityGrade.good, size: 160),
               const SizedBox(height: 24),
               Text(
-                '코코가 공기를 확인 중이에요...',
+                '코수미가 공기를 확인 중이에요...',
                 style: GoogleFonts.notoSansKr(
                   fontSize: 16,
                   color: AppColors.goodDark,

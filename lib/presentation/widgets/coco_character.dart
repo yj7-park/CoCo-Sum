@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../domain/entities/air_quality.dart';
 
-/// 코코 — 공기 상태에 따라 표정이 바뀌는 구름 마스코트.
+/// 코수미 — 공기 상태에 따라 표정이 바뀌는 구름 마스코트.
 ///
 /// 애니메이션:
 /// - 둥실둥실 떠다니기 (3초 루프)
