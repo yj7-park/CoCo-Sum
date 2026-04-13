@@ -223,8 +223,13 @@ class _MainScreen extends StatelessWidget {
               children: [
                 _TopBar(data: data, ref: ref),
                 Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                  child: RefreshIndicator(
+                    onRefresh: () async => ref.invalidate(airQualityProvider),
+                    color: AppColors.primary(grade),
+                    child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.only(bottom: 24),
                     child: Column(
                       children: [
@@ -242,6 +247,7 @@ class _MainScreen extends StatelessWidget {
                         ],
                       ],
                     ),
+                  ),
                   ),
                 ),
               ],
