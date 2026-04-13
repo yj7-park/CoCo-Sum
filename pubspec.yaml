@@ -1,7 +1,7 @@
 name: coco_sum
 description: "코코숨 - 우리 아가 맑은 숨결 지킴이"
 publish_to: 'none'
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ^3.8.0
