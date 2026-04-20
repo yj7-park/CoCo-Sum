@@ -111,8 +111,7 @@ class _CocoPainter extends CustomPainter {
 
   bool get _hasWorriedBrows =>
       grade == AirQualityGrade.quiteBad ||
-      grade == AirQualityGrade.veryBad ||
-      grade == AirQualityGrade.worst;
+      grade == AirQualityGrade.veryBad;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -128,18 +127,18 @@ class _CocoPainter extends CustomPainter {
       _drawSparkles(canvas, cx, cy, w);
     }
 
-    // 눈 ─ 단계별로 다르게
-    switch (grade) {
-      case AirQualityGrade.best:
-        _drawHeartEyes(canvas, cx, cy, w);
-      case AirQualityGrade.worst:
-        _drawClosedEyes(canvas, cx, cy, w);
-      default:
-        _drawEyes(canvas, cx, cy, w);
-    }
+    // worst는 전면 방독면이 눈까지 덮음 → 눈·눈썹 별도 렌더 생략
+    if (grade != AirQualityGrade.worst) {
+      switch (grade) {
+        case AirQualityGrade.best:
+          _drawHeartEyes(canvas, cx, cy, w);
+        default:
+          _drawEyes(canvas, cx, cy, w);
+      }
 
-    if (_hasWorriedBrows) {
-      _drawWorriedBrows(canvas, cx, cy, w);
+      if (_hasWorriedBrows) {
+        _drawWorriedBrows(canvas, cx, cy, w);
+      }
     }
 
     // 입 / 마스크 / 방독면
@@ -155,8 +154,9 @@ class _CocoPainter extends CustomPainter {
       case AirQualityGrade.quiteBad:
         _drawMask(canvas, cx, cy, w);
       case AirQualityGrade.veryBad:
-      case AirQualityGrade.worst:
         _drawGasMask(canvas, cx, cy, w);
+      case AirQualityGrade.worst:
+        _drawFullFaceGasMask(canvas, cx, cy, w);
     }
 
     if (_hasCheeks) {
@@ -335,41 +335,6 @@ class _CocoPainter extends CustomPainter {
       s * 0.18,
       Paint()..color = Colors.white.withValues(alpha: 0.85),
     );
-  }
-
-  // ── 눈: 감김 ㅠㅠ (최악) ──────────────────────────────────
-
-  void _drawClosedEyes(Canvas canvas, double cx, double cy, double w) {
-    final eyeY = cy - w * 0.04;
-    final eyeOx = w * 0.125;
-    final r = w * 0.085;
-    final paint = Paint()
-      ..color = const Color(0xFF5D4037)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.028
-      ..strokeCap = StrokeCap.round;
-
-    for (final sign in [-1.0, 1.0]) {
-      final ex = cx + sign * eyeOx;
-      // 아래로 굽은 호 (슬픈 눈)
-      canvas.drawArc(
-        Rect.fromCenter(
-          center: Offset(ex, eyeY + r * 0.3),
-          width: r * 1.9,
-          height: r * 1.3,
-        ),
-        math.pi * 1.05,
-        math.pi * 0.9,
-        false,
-        paint,
-      );
-      // 눈물 한 방울
-      canvas.drawCircle(
-        Offset(ex, eyeY + r * 0.55),
-        r * 0.22,
-        Paint()..color = const Color(0xFF4FC3F7).withValues(alpha: 0.85),
-      );
-    }
   }
 
   // ── 표정 ─────────────────────────────────────────────────
@@ -592,6 +557,125 @@ class _CocoPainter extends CustomPainter {
     canvas.drawLine(
       Offset(cx + maskW * 0.48, maskCy + maskH * 0.2),
       Offset(cx + maskW * 0.70, maskCy + maskH * 0.45),
+      strapPaint,
+    );
+  }
+
+  // ── 전면 방독면: 눈까지 덮음 (최악) ─────────────────────
+
+  void _drawFullFaceGasMask(Canvas canvas, double cx, double cy, double w) {
+    final eyeR = w * 0.085;
+    final eyeY = cy - w * 0.04;
+    final eyeOx = w * 0.125;
+    final maskTop = eyeY - eyeR * 1.3;
+    final maskBottom = cy + w * 0.25;
+    final maskCy = (maskTop + maskBottom) / 2;
+    final maskH = maskBottom - maskTop;
+    final maskW = w * 0.62;
+
+    // 본체
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(cx, maskCy), width: maskW, height: maskH),
+      Radius.circular(w * 0.15),
+    );
+    canvas.drawRRect(rrect, Paint()..color = const Color(0xFF546E7A));
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = const Color(0xFF263238)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.013,
+    );
+
+    // 하이라이트
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(cx - maskW * 0.2, maskTop + maskH * 0.15),
+        width: maskW * 0.3,
+        height: maskH * 0.1,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.12),
+    );
+
+    // 고글 렌즈 (두 개)
+    for (final sign in [-1.0, 1.0]) {
+      final ex = cx + sign * eyeOx;
+      // 외곽 프레임
+      canvas.drawCircle(
+        Offset(ex, eyeY),
+        eyeR * 1.25,
+        Paint()..color = const Color(0xFF263238),
+      );
+      // 렌즈 유리 (어두운 청색 반투명)
+      canvas.drawCircle(
+        Offset(ex, eyeY),
+        eyeR * 1.1,
+        Paint()..color = const Color(0xFF1A237E).withValues(alpha: 0.75),
+      );
+      // 렌즈 반사광
+      canvas.drawCircle(
+        Offset(ex - eyeR * 0.35, eyeY - eyeR * 0.35),
+        eyeR * 0.28,
+        Paint()..color = Colors.white.withValues(alpha: 0.35),
+      );
+    }
+
+    // 중앙 필터 canister
+    final filterR = w * 0.095;
+    final filterCy = maskCy + maskH * 0.22;
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR,
+      Paint()..color = const Color(0xFF37474F),
+    );
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR,
+      Paint()
+        ..color = const Color(0xFF1C2529)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.012,
+    );
+    for (final rf in [0.65, 0.4]) {
+      canvas.drawCircle(
+        Offset(cx, filterCy),
+        filterR * rf,
+        Paint()
+          ..color = const Color(0xFF90A4AE)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.008,
+      );
+    }
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR * 0.12,
+      Paint()..color = const Color(0xFF90A4AE),
+    );
+
+    // 끈 (위·아래)
+    final strapPaint = Paint()
+      ..color = const Color(0xFF37474F)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.016
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(cx - maskW * 0.47, maskTop + maskH * 0.2),
+      Offset(cx - maskW * 0.72, eyeY - w * 0.03),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx + maskW * 0.47, maskTop + maskH * 0.2),
+      Offset(cx + maskW * 0.72, eyeY - w * 0.03),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx - maskW * 0.47, maskTop + maskH * 0.75),
+      Offset(cx - maskW * 0.70, maskCy + maskH * 0.4),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx + maskW * 0.47, maskTop + maskH * 0.75),
+      Offset(cx + maskW * 0.70, maskCy + maskH * 0.4),
       strapPaint,
     );
   }
