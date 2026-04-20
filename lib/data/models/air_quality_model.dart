@@ -141,9 +141,10 @@ class AirQualityModel extends AirQuality {
 
   static double? _parseDouble(dynamic value) {
     if (value == null || value == '-' || value == '') return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    return double.tryParse(value.toString().trim());
+    if (value is double) return value == -1.0 ? null : value;
+    if (value is int) return value == -1 ? null : value.toDouble();
+    final parsed = double.tryParse(value.toString().trim());
+    return parsed == -1.0 ? null : parsed;
   }
 
   static DateTime? _parseDateTime(String? value) {

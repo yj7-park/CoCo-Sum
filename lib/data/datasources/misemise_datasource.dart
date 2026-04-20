@@ -149,7 +149,11 @@ class MisemiseDataSource implements AirQualityDataSource {
     required double userLat,
     required double userLon,
   }) {
-    stations.sort((a, b) {
+    // -1은 데이터 미수집 → 유효 측정소만 우선 사용, 없으면 전체 fallback
+    final validStations = stations.where(_hasValidData).toList();
+    final candidates = validStations.isNotEmpty ? validStations : stations;
+
+    candidates.sort((a, b) {
       final da = _haversineKm(
         userLat, userLon,
         (a['latitude'] as num).toDouble(),
@@ -162,7 +166,18 @@ class MisemiseDataSource implements AirQualityDataSource {
       );
       return da.compareTo(db);
     });
-    return stations.first;
+    return candidates.first;
+  }
+
+  static bool _hasValidData(Map<String, dynamic> station) {
+    return !_isMinusOne(station['pm25Value']) &&
+        !_isMinusOne(station['pm10Value']);
+  }
+
+  static bool _isMinusOne(dynamic value) {
+    if (value == null) return false;
+    if (value is num) return value == -1;
+    return value.toString().trim() == '-1';
   }
 
   // ── 시도명 정규화 ──────────────────────────────────────────
