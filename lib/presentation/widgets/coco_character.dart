@@ -2,11 +2,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../domain/entities/air_quality.dart';
 
-/// 코수미 — 공기 상태에 따라 표정이 바뀌는 구름 마스코트.
+/// 코수미 — 공기 상태에 따라 표정·액세서리가 바뀌는 구름 마스코트.
 ///
-/// 애니메이션:
-/// - 둥실둥실 떠다니기 (3초 루프)
-/// - 눈 깜빡임 (3~5초 간격)
+/// 8단계 표현:
+/// - 최고       : 하트 눈 + 큰 미소 + 볼터치 + 반짝이
+/// - 좋음       : 둥근 눈 + 큰 미소 + 볼터치
+/// - 양호       : 둥근 눈 + 작은 미소 + 볼터치
+/// - 보통       : 둥근 눈 + 일자 미소
+/// - 나쁨       : 마스크 착용
+/// - 상당히 나쁨 : 걱정 눈썹 + 마스크
+/// - 매우 나쁨   : 걱정 눈썹 + 방독면 (중앙 필터)
+/// - 최악       : 감긴 눈 + 걱정 눈썹 + 방독면 + 땀방울
 class CocoCharacter extends StatefulWidget {
   final AirQualityGrade grade;
   final double size;
@@ -98,23 +104,67 @@ class _CocoPainter extends CustomPainter {
 
   const _CocoPainter({required this.grade, this.blinkProgress = 0});
 
-  // ── 좌표 헬퍼 ────────────────────────────────────────────
-  // 캔버스 크기에 대한 비율로 좌표를 계산해 모든 size에서 동일하게 보임
+  bool get _hasCheeks =>
+      grade == AirQualityGrade.best ||
+      grade == AirQualityGrade.good ||
+      grade == AirQualityGrade.fine;
+
+  bool get _hasWorriedBrows =>
+      grade == AirQualityGrade.quiteBad ||
+      grade == AirQualityGrade.veryBad ||
+      grade == AirQualityGrade.worst;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    // 구름 중심 (약간 아래)
     final cx = w * 0.5;
     final cy = h * 0.56;
 
     _drawDropShadow(canvas, cx, h * 0.92, w);
     _drawCloudBody(canvas, cx, cy, w);
-    _drawEyes(canvas, cx, cy, w);
-    _drawExpression(canvas, cx, cy, w);
-    if (grade == AirQualityGrade.best || grade == AirQualityGrade.good) {
+
+    if (grade == AirQualityGrade.best) {
+      _drawSparkles(canvas, cx, cy, w);
+    }
+
+    // 눈 ─ 단계별로 다르게
+    switch (grade) {
+      case AirQualityGrade.best:
+        _drawHeartEyes(canvas, cx, cy, w);
+      case AirQualityGrade.worst:
+        _drawClosedEyes(canvas, cx, cy, w);
+      default:
+        _drawEyes(canvas, cx, cy, w);
+    }
+
+    if (_hasWorriedBrows) {
+      _drawWorriedBrows(canvas, cx, cy, w);
+    }
+
+    // 입 / 마스크 / 방독면
+    switch (grade) {
+      case AirQualityGrade.best:
+      case AirQualityGrade.good:
+        _drawBigSmile(canvas, cx, cy, w);
+      case AirQualityGrade.fine:
+        _drawSmallSmile(canvas, cx, cy, w);
+      case AirQualityGrade.moderate:
+        _drawFlatMouth(canvas, cx, cy, w);
+      case AirQualityGrade.bad:
+      case AirQualityGrade.quiteBad:
+        _drawMask(canvas, cx, cy, w);
+      case AirQualityGrade.veryBad:
+      case AirQualityGrade.worst:
+        _drawGasMask(canvas, cx, cy, w);
+    }
+
+    if (_hasCheeks) {
       _drawCheeks(canvas, cx, cy, w);
+    }
+
+    if (grade == AirQualityGrade.worst) {
+      _drawSweatDrop(canvas, cx, cy, w);
     }
   }
 
@@ -137,18 +187,15 @@ class _CocoPainter extends CustomPainter {
 
   void _drawCloudBody(Canvas canvas, double cx, double cy, double w) {
     final color = _bodyColor();
-    final r = w * 0.36; // 본체 반지름
+    final r = w * 0.36;
 
-    // 구름을 구성하는 원들 (그림자 → 본체 순서로 그림)
     final circles = [
-      // (x_offset, y_offset, radius_factor)
-      (0.0, 0.0, 1.0), // 메인 본체
-      (-0.52, -0.28, 0.55), // 왼쪽 범프
-      (0.0, -0.58, 0.60), // 위 중앙 범프 (제일 높음)
-      (0.52, -0.28, 0.55), // 오른쪽 범프
+      (0.0, 0.0, 1.0),
+      (-0.52, -0.28, 0.55),
+      (0.0, -0.58, 0.60),
+      (0.52, -0.28, 0.55),
     ];
 
-    // 공통 그림자
     final shadowPaint = Paint()
       ..color = Colors.black.withValues(alpha: 0.08)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
@@ -160,13 +207,11 @@ class _CocoPainter extends CustomPainter {
       );
     }
 
-    // 구름 본체
     final bodyPaint = Paint()..color = color;
     for (final (dx, dy, rf) in circles) {
       canvas.drawCircle(Offset(cx + dx * r, cy + dy * r), r * rf, bodyPaint);
     }
 
-    // 은은한 하이라이트 (왼쪽 상단)
     canvas.drawCircle(
       Offset(cx - r * 0.3, cy - r * 0.45),
       r * 0.28,
@@ -185,12 +230,12 @@ class _CocoPainter extends CustomPainter {
         AirQualityGrade.worst => const Color(0xFFF3E5F5),
       };
 
-  // ── 눈 ───────────────────────────────────────────────────
+  // ── 눈 (기본) ────────────────────────────────────────────
 
   void _drawEyes(Canvas canvas, double cx, double cy, double w) {
     final eyeR = w * 0.085;
     final eyeY = cy - w * 0.04;
-    final eyeOx = w * 0.125; // 눈 좌우 오프셋
+    final eyeOx = w * 0.125;
 
     for (final sign in [-1.0, 1.0]) {
       final ex = cx + sign * eyeOx;
@@ -199,7 +244,6 @@ class _CocoPainter extends CustomPainter {
   }
 
   void _drawSingleEye(Canvas canvas, double ex, double ey, double r) {
-    // 흰자
     canvas.drawCircle(
       Offset(ex, ey),
       r,
@@ -209,21 +253,18 @@ class _CocoPainter extends CustomPainter {
     if (blinkProgress < 0.85) {
       final openRatio = 1 - blinkProgress;
 
-      // 홍채
       canvas.drawCircle(
         Offset(ex, ey),
         r * 0.65 * openRatio,
         Paint()..color = _irisColor(),
       );
 
-      // 동공
       canvas.drawCircle(
         Offset(ex, ey),
         r * 0.3 * openRatio,
         Paint()..color = const Color(0xFF1A0A00),
       );
 
-      // 하이라이트
       canvas.drawCircle(
         Offset(ex - r * 0.18, ey - r * 0.22),
         r * 0.17 * openRatio,
@@ -231,7 +272,6 @@ class _CocoPainter extends CustomPainter {
       );
     }
 
-    // 눈꺼풀 (깜빡임)
     if (blinkProgress > 0.05) {
       final lidH = r * 2.1 * blinkProgress;
       canvas.drawRect(
@@ -240,7 +280,6 @@ class _CocoPainter extends CustomPainter {
       );
     }
 
-    // 눈 테두리
     canvas.drawCircle(
       Offset(ex, ey),
       r,
@@ -262,24 +301,78 @@ class _CocoPainter extends CustomPainter {
         AirQualityGrade.worst => const Color(0xFFCE93D8),
       };
 
-  // ── 표정 ─────────────────────────────────────────────────
+  // ── 눈: 하트 (최고) ───────────────────────────────────────
 
-  void _drawExpression(Canvas canvas, double cx, double cy, double w) {
-    switch (grade) {
-      case AirQualityGrade.best:
-      case AirQualityGrade.good:
-        _drawBigSmile(canvas, cx, cy, w);
-      case AirQualityGrade.fine:
-      case AirQualityGrade.moderate:
-        _drawSmallSmile(canvas, cx, cy, w);
-      case AirQualityGrade.bad:
-      case AirQualityGrade.quiteBad:
-        _drawMask(canvas, cx, cy, w);
-      case AirQualityGrade.veryBad:
-      case AirQualityGrade.worst:
-        _drawWorriedFace(canvas, cx, cy, w);
+  void _drawHeartEyes(Canvas canvas, double cx, double cy, double w) {
+    final eyeY = cy - w * 0.04;
+    final eyeOx = w * 0.125;
+    final s = w * 0.095;
+    for (final sign in [-1.0, 1.0]) {
+      _drawHeart(canvas, cx + sign * eyeOx, eyeY, s);
     }
   }
+
+  void _drawHeart(Canvas canvas, double cx, double cy, double s) {
+    final path = Path();
+    path.moveTo(cx, cy + s * 0.5);
+    path.cubicTo(
+      cx + s * 1.2, cy - s * 0.2,
+      cx + s * 0.5, cy - s * 0.9,
+      cx, cy - s * 0.25,
+    );
+    path.cubicTo(
+      cx - s * 0.5, cy - s * 0.9,
+      cx - s * 1.2, cy - s * 0.2,
+      cx, cy + s * 0.5,
+    );
+    path.close();
+    canvas.drawPath(
+      path,
+      Paint()..color = const Color(0xFFEF5B5B),
+    );
+    canvas.drawCircle(
+      Offset(cx - s * 0.35, cy - s * 0.35),
+      s * 0.18,
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    );
+  }
+
+  // ── 눈: 감김 ㅠㅠ (최악) ──────────────────────────────────
+
+  void _drawClosedEyes(Canvas canvas, double cx, double cy, double w) {
+    final eyeY = cy - w * 0.04;
+    final eyeOx = w * 0.125;
+    final r = w * 0.085;
+    final paint = Paint()
+      ..color = const Color(0xFF5D4037)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.028
+      ..strokeCap = StrokeCap.round;
+
+    for (final sign in [-1.0, 1.0]) {
+      final ex = cx + sign * eyeOx;
+      // 아래로 굽은 호 (슬픈 눈)
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(ex, eyeY + r * 0.3),
+          width: r * 1.9,
+          height: r * 1.3,
+        ),
+        math.pi * 1.05,
+        math.pi * 0.9,
+        false,
+        paint,
+      );
+      // 눈물 한 방울
+      canvas.drawCircle(
+        Offset(ex, eyeY + r * 0.55),
+        r * 0.22,
+        Paint()..color = const Color(0xFF4FC3F7).withValues(alpha: 0.85),
+      );
+    }
+  }
+
+  // ── 표정 ─────────────────────────────────────────────────
 
   void _drawBigSmile(Canvas canvas, double cx, double cy, double w) {
     final paint = Paint()
@@ -298,7 +391,6 @@ class _CocoPainter extends CustomPainter {
       paint,
     );
 
-    // 웃음 보조선 (볼 옆)
     canvas.drawLine(
       Offset(cx - r * 0.95, my + r * 0.1),
       Offset(cx - r * 1.1, my - r * 0.1),
@@ -329,12 +421,31 @@ class _CocoPainter extends CustomPainter {
     );
   }
 
+  void _drawFlatMouth(Canvas canvas, double cx, double cy, double w) {
+    final paint = Paint()
+      ..color = const Color(0xFF8B4513)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.024
+      ..strokeCap = StrokeCap.round;
+    final my = cy + w * 0.11;
+    final r = w * 0.06;
+    // 거의 일자에 가까운 아주 작은 호
+    canvas.drawArc(
+      Rect.fromCenter(center: Offset(cx, my), width: r * 2.2, height: r * 0.6),
+      0.1,
+      math.pi * 0.85,
+      false,
+      paint,
+    );
+  }
+
+  // ── 마스크 (나쁨·상당히 나쁨) ────────────────────────────
+
   void _drawMask(Canvas canvas, double cx, double cy, double w) {
     final maskCy = cy + w * 0.1;
     final maskW = w * 0.40;
     final maskH = w * 0.20;
 
-    // 마스크 본체
     final rrect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: Offset(cx, maskCy),
@@ -355,7 +466,6 @@ class _CocoPainter extends CustomPainter {
         ..strokeWidth = 1.8,
     );
 
-    // 주름선 3개
     final pleatPaint = Paint()
       ..color = const Color(0xFF90CAF9).withValues(alpha: 0.55)
       ..strokeWidth = 1.0;
@@ -367,7 +477,6 @@ class _CocoPainter extends CustomPainter {
       );
     }
 
-    // 귀걸이 끈
     final strapPaint = Paint()
       ..color = const Color(0xFF90CAF9)
       ..style = PaintingStyle.stroke
@@ -386,18 +495,119 @@ class _CocoPainter extends CustomPainter {
     );
   }
 
-  void _drawWorriedFace(Canvas canvas, double cx, double cy, double w) {
+  // ── 방독면 (매우 나쁨·최악) ──────────────────────────────
+
+  void _drawGasMask(Canvas canvas, double cx, double cy, double w) {
+    final maskCy = cy + w * 0.13;
+    final maskW = w * 0.54;
+    final maskH = w * 0.30;
+
+    // 본체 (둥근 직사각형, 어두운 고무색)
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(cx, maskCy),
+        width: maskW,
+        height: maskH,
+      ),
+      Radius.circular(w * 0.13),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()..color = const Color(0xFF607D8B),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = const Color(0xFF263238)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.012,
+    );
+
+    // 하이라이트 (좌상단)
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(cx - maskW * 0.22, maskCy - maskH * 0.22),
+        width: maskW * 0.28,
+        height: maskH * 0.18,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.15),
+    );
+
+    // 중앙 필터 canister
+    final filterR = w * 0.095;
+    final filterCy = maskCy + w * 0.025;
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR,
+      Paint()..color = const Color(0xFF37474F),
+    );
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR,
+      Paint()
+        ..color = const Color(0xFF1C2529)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.012,
+    );
+    // 그릴 (동심원)
+    for (final rf in [0.65, 0.4]) {
+      canvas.drawCircle(
+        Offset(cx, filterCy),
+        filterR * rf,
+        Paint()
+          ..color = const Color(0xFF90A4AE)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.008,
+      );
+    }
+    // 중앙 점
+    canvas.drawCircle(
+      Offset(cx, filterCy),
+      filterR * 0.12,
+      Paint()..color = const Color(0xFF90A4AE),
+    );
+
+    // 끈 (위·아래)
+    final strapPaint = Paint()
+      ..color = const Color(0xFF37474F)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.016
+      ..strokeCap = StrokeCap.round;
+    final eyeY = cy - w * 0.04;
+    canvas.drawLine(
+      Offset(cx - maskW * 0.48, maskCy - maskH * 0.25),
+      Offset(cx - maskW * 0.72, eyeY - w * 0.01),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx + maskW * 0.48, maskCy - maskH * 0.25),
+      Offset(cx + maskW * 0.72, eyeY - w * 0.01),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx - maskW * 0.48, maskCy + maskH * 0.2),
+      Offset(cx - maskW * 0.70, maskCy + maskH * 0.45),
+      strapPaint,
+    );
+    canvas.drawLine(
+      Offset(cx + maskW * 0.48, maskCy + maskH * 0.2),
+      Offset(cx + maskW * 0.70, maskCy + maskH * 0.45),
+      strapPaint,
+    );
+  }
+
+  // ── 걱정 눈썹 ────────────────────────────────────────────
+
+  void _drawWorriedBrows(Canvas canvas, double cx, double cy, double w) {
     final eyeY = cy - w * 0.04;
     final eyeOx = w * 0.125;
-
-    // 걱정 눈썹 (안쪽이 올라감)
     final browPaint = Paint()
-      ..color = const Color(0xFF795548)
+      ..color = const Color(0xFF5D4037)
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.028
       ..strokeCap = StrokeCap.round;
 
-    // 왼쪽 눈썹: 바깥→안쪽이 높아짐
+    // 왼쪽 눈썹: 안쪽(오른쪽 끝)이 올라감
     canvas.drawLine(
       Offset(cx - eyeOx - w * 0.07, eyeY - w * 0.12),
       Offset(cx - eyeOx + w * 0.05, eyeY - w * 0.18),
@@ -409,26 +619,69 @@ class _CocoPainter extends CustomPainter {
       Offset(cx + eyeOx + w * 0.07, eyeY - w * 0.12),
       browPaint,
     );
-
-    // 슬픈 입 (아래로 굽은 곡선)
-    final mouthPaint = Paint()
-      ..color = const Color(0xFF8B4513)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.025
-      ..strokeCap = StrokeCap.round;
-
-    final mPath = Path();
-    final my = cy + w * 0.12;
-    mPath.moveTo(cx - w * 0.09, my);
-    mPath.quadraticBezierTo(cx, my + w * 0.06, cx + w * 0.09, my);
-    canvas.drawPath(mPath, mouthPaint);
   }
+
+  // ── 반짝이 (최고) ────────────────────────────────────────
+
+  void _drawSparkles(Canvas canvas, double cx, double cy, double w) {
+    final paint = Paint()..color = const Color(0xFFFFD740);
+    final items = <(Offset, double)>[
+      (Offset(cx - w * 0.36, cy - w * 0.34), w * 0.045),
+      (Offset(cx + w * 0.37, cy - w * 0.38), w * 0.050),
+      (Offset(cx - w * 0.42, cy + w * 0.04), w * 0.030),
+      (Offset(cx + w * 0.41, cy - w * 0.02), w * 0.035),
+    ];
+    for (final (pos, r) in items) {
+      _drawSparkle(canvas, pos, r, paint);
+    }
+  }
+
+  void _drawSparkle(Canvas canvas, Offset c, double r, Paint paint) {
+    final path = Path();
+    path.moveTo(c.dx, c.dy - r);
+    path.lineTo(c.dx + r * 0.3, c.dy - r * 0.3);
+    path.lineTo(c.dx + r, c.dy);
+    path.lineTo(c.dx + r * 0.3, c.dy + r * 0.3);
+    path.lineTo(c.dx, c.dy + r);
+    path.lineTo(c.dx - r * 0.3, c.dy + r * 0.3);
+    path.lineTo(c.dx - r, c.dy);
+    path.lineTo(c.dx - r * 0.3, c.dy - r * 0.3);
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  // ── 땀방울 (최악) ────────────────────────────────────────
+
+  void _drawSweatDrop(Canvas canvas, double cx, double cy, double w) {
+    final tx = cx + w * 0.28;
+    final ty = cy - w * 0.24;
+    final s = w * 0.055;
+
+    final path = Path();
+    path.moveTo(tx, ty - s);
+    path.quadraticBezierTo(tx + s * 0.9, ty, tx, ty + s * 0.6);
+    path.quadraticBezierTo(tx - s * 0.9, ty, tx, ty - s);
+    path.close();
+
+    canvas.drawPath(
+      path,
+      Paint()..color = const Color(0xFF4FC3F7),
+    );
+    canvas.drawCircle(
+      Offset(tx - s * 0.25, ty - s * 0.2),
+      s * 0.2,
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    );
+  }
+
+  // ── 볼터치 ───────────────────────────────────────────────
 
   void _drawCheeks(Canvas canvas, double cx, double cy, double w) {
     final eyeY = cy - w * 0.04;
     final eyeOx = w * 0.125;
+    final alpha = grade == AirQualityGrade.fine ? 0.45 : 0.65;
     final cheekPaint = Paint()
-      ..color = const Color(0xFFFFB3C1).withValues(alpha: 0.65);
+      ..color = const Color(0xFFFFB3C1).withValues(alpha: alpha);
 
     canvas.drawOval(
       Rect.fromCenter(
