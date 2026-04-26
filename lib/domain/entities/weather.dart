@@ -1,11 +1,15 @@
 class Weather {
   final double temperature;
+  final double maxTemperature;
+  final double minTemperature;
   final int weatherCode;
   final double windSpeed;
   final int humidity;
 
   const Weather({
     required this.temperature,
+    required this.maxTemperature,
+    required this.minTemperature,
     required this.weatherCode,
     required this.windSpeed,
     required this.humidity,

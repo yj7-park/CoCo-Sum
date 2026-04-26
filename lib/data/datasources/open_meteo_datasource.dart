@@ -19,7 +19,9 @@ class OpenMeteoDataSource implements WeatherDataSource {
           'latitude': latitude,
           'longitude': longitude,
           'current': 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m',
+          'daily': 'temperature_2m_max,temperature_2m_min',
           'timezone': 'auto',
+          'forecast_days': 1,
         },
       );
 

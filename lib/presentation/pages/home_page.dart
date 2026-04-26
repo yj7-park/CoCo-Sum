@@ -311,6 +311,15 @@ class _TopBar extends ConsumerWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${weather.maxTemperature.toStringAsFixed(0)}°/${weather.minTemperature.toStringAsFixed(0)}°',
+                      style: GoogleFonts.notoSansKr(
+                        fontSize: 11,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
                     const SizedBox(width: 12),
                   ],
                 ),
