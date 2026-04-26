@@ -221,10 +221,13 @@ class _MainScreen extends StatelessWidget {
           child: SafeArea(
             child: Column(
               children: [
-                _TopBar(data: data, ref: ref),
+                _TopBar(data: data),
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: () async => ref.invalidate(airQualityProvider),
+                    onRefresh: () async {
+                      ref.invalidate(airQualityProvider);
+                      ref.invalidate(weatherProvider);
+                    },
                     color: AppColors.primary(grade),
                     child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(
@@ -241,6 +244,8 @@ class _MainScreen extends StatelessWidget {
                         ActionBanner(grade: grade),
                         const SizedBox(height: 20),
                         _PollutantRow(data: data),
+                        const SizedBox(height: 12),
+                        _WeatherDetailsRow(),
                         if (data.isMockData) ...[
                           const SizedBox(height: 12),
                           _MockDataNotice(),
@@ -259,16 +264,16 @@ class _MainScreen extends StatelessWidget {
   }
 }
 
-class _TopBar extends StatelessWidget {
+class _TopBar extends ConsumerWidget {
   final AirQuality data;
-  final WidgetRef ref;
 
-  const _TopBar({required this.data, required this.ref});
+  const _TopBar({required this.data});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final timeStr = DateFormat('HH:mm').format(now);
+    final weatherAsync = ref.watch(weatherProvider);
 
     // 사용자 GPS 위치 (역지오코딩) / 측정소 위치
     final userLoc = data.userLocationName;
@@ -295,6 +300,23 @@ class _TopBar extends StatelessWidget {
           ),
           Row(
             children: [
+              weatherAsync.when(
+                data: (weather) => Row(
+                  children: [
+                    Text(
+                      '${weather.iconEmoji} ${weather.temperature.toStringAsFixed(1)}°',
+                      style: GoogleFonts.notoSansKr(
+                        fontSize: 14,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
               Text(
                 timeStr,
                 style: GoogleFonts.notoSansKr(
@@ -304,7 +326,10 @@ class _TopBar extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               GestureDetector(
-                onTap: () => ref.invalidate(airQualityProvider),
+                onTap: () {
+                  ref.invalidate(airQualityProvider);
+                  ref.invalidate(weatherProvider);
+                },
                 child: const Icon(
                   Icons.refresh_rounded,
                   color: Colors.white,
@@ -535,6 +560,86 @@ class _UpdateDialog extends StatelessWidget {
           child: Text(
             '업데이트',
             style: GoogleFonts.notoSansKr(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WeatherDetailsRow extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final weatherAsync = ref.watch(weatherProvider);
+
+    return weatherAsync.when(
+      data: (weather) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _WeatherInfoItem(
+                label: '상태',
+                value: weather.weatherDescription,
+                icon: Icons.info_outline,
+              ),
+              _WeatherInfoItem(
+                label: '습도',
+                value: '${weather.humidity}%',
+                icon: Icons.water_drop_outlined,
+              ),
+              _WeatherInfoItem(
+                label: '풍속',
+                value: '${weather.windSpeed}m/s',
+                icon: Icons.air,
+              ),
+            ],
+          ),
+        ),
+      ),
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _WeatherInfoItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _WeatherInfoItem({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: Colors.black54),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: GoogleFonts.notoSansKr(
+            fontSize: 11,
+            color: Colors.black45,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: GoogleFonts.notoSansKr(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
           ),
         ),
       ],

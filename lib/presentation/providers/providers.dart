@@ -4,10 +4,16 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../data/datasources/air_quality_datasource.dart';
 import '../../data/datasources/misemise_datasource.dart';
+import '../../data/datasources/open_meteo_datasource.dart';
+import '../../data/datasources/weather_datasource.dart';
 import '../../data/repositories/air_quality_repository_impl.dart';
+import '../../data/repositories/weather_repository_impl.dart';
 import '../../domain/entities/air_quality.dart';
+import '../../domain/entities/weather.dart';
 import '../../domain/repositories/air_quality_repository.dart';
+import '../../domain/repositories/weather_repository.dart';
 import '../../domain/usecases/get_current_air_quality.dart';
+import '../../domain/usecases/get_current_weather.dart';
 import '../../services/update_checker.dart';
 
 // ── DI 트리 ────────────────────────────────────────────────────
@@ -35,6 +41,20 @@ final repositoryProvider = Provider<AirQualityRepository>((ref) {
 
 final usecaseProvider = Provider<GetCurrentAirQuality>((ref) {
   return GetCurrentAirQuality(ref.watch(repositoryProvider));
+});
+
+// ── 날씨 DI ──────────────────────────────────────────────────
+
+final weatherDataSourceProvider = Provider<WeatherDataSource>((ref) {
+  return OpenMeteoDataSource(ref.watch(dioProvider));
+});
+
+final weatherRepositoryProvider = Provider<WeatherRepository>((ref) {
+  return WeatherRepositoryImpl(ref.watch(weatherDataSourceProvider));
+});
+
+final getWeatherUseCaseProvider = Provider<GetCurrentWeather>((ref) {
+  return GetCurrentWeather(ref.watch(weatherRepositoryProvider));
 });
 
 // ── 위치 ──────────────────────────────────────────────────────
@@ -67,6 +87,14 @@ final airQualityProvider = FutureProvider.autoDispose<AirQuality>((ref) async {
     latitude: position.latitude,
     longitude: position.longitude,
   );
+});
+
+// ── 날씨 ─────────────────────────────────────────────────────
+
+final weatherProvider = FutureProvider.autoDispose<Weather>((ref) async {
+  final position = await ref.watch(locationProvider.future);
+  final usecase = ref.watch(getWeatherUseCaseProvider);
+  return usecase.execute(position.latitude, position.longitude);
 });
 
 // ── 자동 업데이트 ─────────────────────────────────────────────
